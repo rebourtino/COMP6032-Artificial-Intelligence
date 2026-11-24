@@ -10,11 +10,12 @@ import networld
 worldX = 50
 worldY = 50
 runTime = 1440 # number of ticks in a 'day'
-numDays = 1    # number of days to run
+numDays = 10    # number of days to run
 # you can change the DisplaySize to be bigger if you want larger-size objects on-screen
 displaySize = (1024,768)
 trafficOn = False
-recordFares = False # turn this on to append to faretypes.csv for more fare data
+recordFares = True # turn this on to append to faretypes.csv for more fare data
+recordMetrics = True # turn this on to append to metrics.csv for more metrics data
 
 # play around with these parameters if you want, to see how they affect the results.
 # (but keep the original settings so you can return to something more-or-less 'sensible)

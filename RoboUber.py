@@ -69,7 +69,16 @@ def runRoboUber(worldX,worldY,runTime,stop,junctions=None,streets=None,interpola
             svcArea.runWorld(ticks=1, outputs=outputValues, outlock=oLock)
             if threadTime != svcArea.simTime:
                threadTime += 1
-            time.sleep(1)        # change this value to speed up the simulation. Smaller times = faster runs
+               if args.get('metricsFile') is not None:
+                  taxi_profits = [taxi._account - 256 for taxi in taxis]
+                  joint_return = dispatcher0._revenue + sum(taxi_profits)
+                  active_taxis = sum(1 for taxi in taxis if taxi.onDuty)
+                  print(args.get('day', 1), svcArea.simTime,
+                        taxi_profits[0], taxi_profits[1], taxi_profits[2], taxi_profits[3],
+                        dispatcher0._revenue, joint_return, active_taxis,
+                        sep=',', file=args['metricsFile'], flush=True)
+            time.sleep(0)        # change this value to speed up the simulation. Smaller times = faster runs
+            print("curTime: {0}, world.time: {1}".format(threadTime,outputValues['time'][-1]))
 
 # file to record appearing Fares. You can use similar instrumentation to record just about anything else of interest
 if recordFares:
@@ -79,6 +88,14 @@ if recordFares:
          sep=',', file=fareFile)
 else:
    fareFile = None
+
+if recordMetrics:
+   metricsFile = open('./metrics_1a.csv', 'w')
+   print('Day', 'Tick', 'Taxi100', 'Taxi101', 'Taxi102', 'Taxi103',
+         'DispatcherRev', 'JointReturn', 'ActiveTaxis',
+         sep=',', file=metricsFile)
+else:
+   metricsFile = None
 
 # event to manage a user exit, invoked by pressing 'q' on the keyboard
 userExit = threading.Event()
@@ -179,7 +196,11 @@ for run in range(numDays):
                                        'outputValues':outputValues,
                                        'oLock': outputLock,
                                        'fareProb':fGenDefault,
-                                       'fareFile':fareFile})
+                                       'fareFile':fareFile,
+                                       'fareProb':fGenDefault,
+                                       'fareFile':fareFile,
+                                       'metricsFile':metricsFile,
+                                       'day':run + 1})
    
    # curTime is the time point currently displayed
    curTime = 0
@@ -209,6 +230,8 @@ for run in range(numDays):
                           # if a fare file has been opened, close it (BUGFIX 26 August 2026 ADR)
                           if fareFile is not None:
                              fareFile.close()
+                          if metricsFile is not None:
+                             metricsFile.close()
                           pygame.quit()
                           sys.exit()
                        userConfirmExit.set() # if user didn't want to quit, resume simulation (BUGFIX 26 Nov 2024 ADR)
