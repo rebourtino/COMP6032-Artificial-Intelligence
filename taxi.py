@@ -355,7 +355,7 @@ class Taxi:
       ''' HERE IS THE PART THAT YOU NEED TO MODIFY
       '''
 
-      # TODO
+      # TODO (DONE)
       # this function should build your route and fill the _path list for each new
       # journey. Below is a naive depth-first search implementation. You should be able
       # to do much better than this!
@@ -363,37 +363,52 @@ class Taxi:
           # if we are nowhere, there is only one sensible destination: our _onDutyPos
           if origin is None:
              return [self._onDutyPos]
-          # the list of explored paths. Recursive invocations pass in explored as a parameter
-          if 'explored' not in args:
-             args['explored'] = {}
-          # add this origin to the explored list
-          # explored is a dict purely so we can hash its index for fast lookup, so its value doesn't matter
-          args['explored'][origin] = None 
-          # the actual path we are going to generate
-          path = [origin]
-          # take the next node in the frontier, and expand it depth-wise               
-          if origin in self._map:
-             # the frontier of unexplored paths (from this Node
-             frontier = [node for node in self._map[origin].keys() if node not in args['explored']]
-             # recurse down to the next node. This will automatically create a depth-first
-             # approach because the recursion won't bottom out until no more frontier nodes
-             # can be generated 
-             for nextNode in frontier:
-                 path = path + self._planPath(nextNode, destination, explored=args['explored'])
-                 # stop early as soon as the destination has been found by any route.
-                 if destination in path:
-                    # validate path
-                    if len(path) > 1:
-                       try:
-                           # use a generator expression to find any invalid nodes in the path
-                           badNode = next(pnode for pnode in path[1:] if pnode not in self._map[path[path.index(pnode)-1]].keys())
-                           raise IndexError("Invalid path: no route from ({0},{1}) to ({2},{3} in map".format(self._map[path.index(pnode)-1][0], self._map[path.index(pnode)-1][1], pnode[0], pnode[1]))
-                       except StopIteration:
-                           pass
-                    return path
-          # didn't reach the destination from any reachable node
-          # no need, therefore, to expand the path for the higher-level call, this is a dead end.
-          return [] 
+          if origin == destination:
+             return [origin]
+          if origin not in self._map or destination not in self._map:
+             return []
+
+          # use A* with Manhattan distance to find the quickest route
+          dist_to_goal = abs(origin[0] - destination[0]) + abs(origin[1] - destination[1])
+          queue = [(dist_to_goal, 0, origin)]
+          best_cost = {origin: 0}
+          parent = {}
+          visited = set()
+
+          while queue:
+             est_total, cost_so_far, spot = heapq.heappop(queue)
+             if spot in visited:
+                continue
+             visited.add(spot)
+
+             if spot == destination:
+                break
+
+             curr_node = self._world.getNode(spot[0], spot[1])
+             for next_spot, edge in self._map[spot].items():
+                 next_node = self._world.getNode(next_spot[0], next_spot[1])
+                 if curr_node is None or next_node is None:
+                    continue
+
+                 move_time = self._world.travelTime(curr_node, next_node)
+                 if move_time < 0:
+                    move_time = edge[1] + 5 + next_node.traffic
+
+                 new_cost = cost_so_far + max(edge[1], move_time)
+                 if next_spot not in best_cost or new_cost < best_cost[next_spot]:
+                    best_cost[next_spot] = new_cost
+                    parent[next_spot] = spot
+                    h = abs(next_spot[0] - destination[0]) + abs(next_spot[1] - destination[1])
+                    heapq.heappush(queue, (new_cost + h, new_cost, next_spot))
+
+          if destination not in best_cost:
+             return []
+
+          route = [destination]
+          while route[-1] != origin:
+             route.append(parent[route[-1]])
+          route.reverse()
+          return route
                 
       # TODO
       # this function decides whether to offer a bid for a fare. In general you can consider your current position, time,

@@ -90,7 +90,7 @@ else:
    fareFile = None
 
 if recordMetrics:
-   metricsFile = open('./metrics_1a.csv', 'w')
+   metricsFile = open('./metrics_1b.csv', 'w')
    print('Day', 'Tick', 'Taxi100', 'Taxi101', 'Taxi102', 'Taxi103',
          'DispatcherRev', 'JointReturn', 'ActiveTaxis',
          sep=',', file=metricsFile)
