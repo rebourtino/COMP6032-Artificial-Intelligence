@@ -91,6 +91,7 @@ else:
 
 if recordMetrics:
    metricsFile = open('./metrics_1b.csv', 'w')
+   # COMMIT FAILED TEST 2
    print('Day', 'Tick', 'Taxi100', 'Taxi101', 'Taxi102', 'Taxi103',
          'DispatcherRev', 'JointReturn', 'ActiveTaxis',
          sep=',', file=metricsFile)
