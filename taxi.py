@@ -356,9 +356,6 @@ class Taxi:
       '''
 
       # TODO (DONE)
-      # this function should build your route and fill the _path list for each new
-      # journey. Below is a naive depth-first search implementation. You should be able
-      # to do much better than this!
       def _planPath(self, origin, destination, **args):
           # if we are nowhere, there is only one sensible destination: our _onDutyPos
           if origin is None:
@@ -368,10 +365,10 @@ class Taxi:
           if origin not in self._map or destination not in self._map:
              return []
 
-          # use A* with Manhattan distance to find the quickest route
-          dist_to_goal = abs(origin[0] - destination[0]) + abs(origin[1] - destination[1])
-          queue = [(dist_to_goal, 0, origin)]
-          best_cost = {origin: 0}
+          # A* search using estimated journey time based on current traffic
+          dist = abs(origin[0] - destination[0]) + abs(origin[1] - destination[1])
+          queue = [(dist, 0.0, origin)]
+          best_cost = {origin: 0.0}
           parent = {}
           visited = set()
 
@@ -390,11 +387,26 @@ class Taxi:
                  if curr_node is None or next_node is None:
                     continue
 
+                 base_time = float(edge[1])
                  move_time = self._world.travelTime(curr_node, next_node)
-                 if move_time < 0:
-                    move_time = edge[1] + 5 + next_node.traffic
 
-                 new_cost = cost_so_far + max(edge[1], move_time)
+                 # estimate extra delay if the next node is busy
+                 cap = getattr(next_node, 'maxTraffic', 1)
+                 if cap <= 0:
+                    cap = 1
+                 traffic = getattr(next_node, 'traffic', 0)
+                 ratio = min(0.95, float(traffic) / float(cap))
+
+                 if move_time < 0:
+                    # node is full so we will have to wait
+                    wait = 4.0 + (traffic * 1.5)
+                    step_cost = base_time + wait
+                 else:
+                    # expected queuing delay increases as node gets closer to capacity
+                    wait = (ratio / (1.0 - ratio)) * 1.2
+                    step_cost = max(base_time, float(move_time)) + wait
+
+                 new_cost = cost_so_far + step_cost
                  if next_spot not in best_cost or new_cost < best_cost[next_spot]:
                     best_cost[next_spot] = new_cost
                     parent[next_spot] = spot
@@ -409,7 +421,7 @@ class Taxi:
              route.append(parent[route[-1]])
           route.reverse()
           return route
-         # COMMIT FAILED TEST 2
+      
                 
       # TODO
       # this function decides whether to offer a bid for a fare. In general you can consider your current position, time,
@@ -438,21 +450,20 @@ class Taxi:
           Bid = CloseEnough and Worthwhile
           return Bid
 
-      # TODO (optional) improve on the abandon logic. Almost anything could be done here: interrogating the Nodes,
-      # replanning the path, waiting, or whatever.
-      # inputs: None (the function should probably interrogate the taxi's own _entryAttempts variable to see
-      # how many times it has been unsuccessful in entering the node given by _nextLoc)
-      # outputs: a Boolean value (True or False) indicating whether the taxi has indeed chosen to abandon the attempt.
-      # if it does, it should definitely call the target Node's abandon() method.
+      # TODO (DONE)
       def _abandonNext(self):
-          # simple fixed threshold for abandoning
-          if self._entryAttempts >= 5:
-             if self._nextLoc is not None: # make sure we have a Node to abandon!
-                self._nextLoc.abandon(self._nextDirection, self)
-                return True
-             # no Node. Reset the entry counter in preparation for picking a new target Node.
-             self._entryAttempts = 0
-          return False # keep waiting, or pick a new target if there was none to begin with.
+         # give up after 3 tries instead of 5 and reroute around the traffic
+         if self._entryAttempts >= 3:
+            if self._nextLoc is not None:
+               self._nextLoc.abandon(self._nextDirection, self)
+               self._entryAttempts = 0
+               if self._loc is not None and len(self._path) > 0:
+                  self._path = self._planPath(self._loc.index, self._path[-1])
+               return True
+            self._entryAttempts = 0
+         return False
+
+
 
 
 

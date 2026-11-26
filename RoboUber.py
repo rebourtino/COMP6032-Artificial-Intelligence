@@ -55,30 +55,46 @@ def runRoboUber(worldX,worldY,runTime,stop,junctions=None,streets=None,interpola
    for onDutyTaxi in taxis:
        onDutyTaxi.comeOnDuty()
 
+   seen_fares = set()
+   picked_up_fares = set()
    threadRunTime = runTime
    threadTime = 0
    print("Starting world")
    while threadTime < threadRunTime:
+      # if the program may be quitting, stop execution awaiting user decision (BUGFIX 26 Nov 2024 ADR)
+      args['ackStop'].wait()
+      # exit if 'q' has been pressed
+      if stop.is_set():
+         threadRunTime = 0
+      else: 
+         svcArea.runWorld(ticks=1, outputs=outputValues, outlock=oLock)
+         if threadTime != svcArea.simTime:
+            threadTime += 1
 
-         # if the program may be quitting, stop execution awaiting user decision (BUGFIX 26 Nov 2024 ADR)
-         args['ackStop'].wait()
-         # exit if 'q' has been pressed
-         if stop.is_set():
-            threadRunTime = 0
-         else: 
-            svcArea.runWorld(ticks=1, outputs=outputValues, outlock=oLock)
-            if threadTime != svcArea.simTime:
-               threadTime += 1
-               if args.get('metricsFile') is not None:
-                  taxi_profits = [taxi._account - 256 for taxi in taxis]
-                  joint_return = dispatcher0._revenue + sum(taxi_profits)
-                  active_taxis = sum(1 for taxi in taxis if taxi.onDuty)
-                  print(args.get('day', 1), svcArea.simTime,
-                        taxi_profits[0], taxi_profits[1], taxi_profits[2], taxi_profits[3],
-                        dispatcher0._revenue, joint_return, active_taxis,
-                        sep=',', file=args['metricsFile'], flush=True)
-            time.sleep(0)        # change this value to speed up the simulation. Smaller times = faster runs
-            print("curTime: {0}, world.time: {1}".format(threadTime,outputValues['time'][-1]))
+            current_waiting = set()
+            for fare in getattr(svcArea, '_fareQ', {}).values():
+               seen_fares.add(id(fare))
+               if getattr(fare, 'enroute', False):
+                  picked_up_fares.add(id(fare))
+               else:
+                  current_waiting.add(id(fare))
+
+            for t in taxis:
+               if getattr(t, '_passenger', None) is not None:
+                  picked_up_fares.add(id(t._passenger))
+
+            fare_drops = len(seen_fares - picked_up_fares - current_waiting)
+
+            if args.get('metricsFile') is not None:
+               taxi_profits = [taxi._account - 256 for taxi in taxis]
+               joint_return = dispatcher0._revenue + sum(taxi_profits)
+               active_taxis = sum(1 for taxi in taxis if taxi.onDuty)
+               print(args.get('day', 1), svcArea.simTime,
+                     taxi_profits[0], taxi_profits[1], taxi_profits[2], taxi_profits[3],
+                     dispatcher0._revenue, joint_return, active_taxis, fare_drops,
+                     sep=',', file=args['metricsFile'], flush=True)
+         time.sleep(0)        # change this value to speed up the simulation. Smaller times = faster runs
+         print("curTime: {0}, world.time: {1}".format(threadTime,outputValues['time'][-1]))
 
 # file to record appearing Fares. You can use similar instrumentation to record just about anything else of interest
 if recordFares:
@@ -90,10 +106,10 @@ else:
    fareFile = None
 
 if recordMetrics:
-   metricsFile = open('./metrics_1b.csv', 'w')
+   metricsFile = open('./metrics_1c.csv', 'w')
    # COMMIT FAILED TEST 2
    print('Day', 'Tick', 'Taxi100', 'Taxi101', 'Taxi102', 'Taxi103',
-         'DispatcherRev', 'JointReturn', 'ActiveTaxis',
+         'DispatcherRev', 'JointReturn', 'ActiveTaxis', 'FareDrops',
          sep=',', file=metricsFile)
 else:
    metricsFile = None
@@ -317,9 +333,12 @@ for run in range(numDays):
 
    roboUber.join() # wait 'til the simulation thread ends (BUGFIX 26 Nov 2024 ADR)
    print("end of day: {0}".format(run))
+   
 # reached the end of the loop. Next day (or exit)
 if fareFile is not None: # BUGFIX handle no open fare file to record ADR 21 October 2025
    fareFile.close()
+if metricsFile is not None:
+   metricsFile.close()
 pygame.quit()
 sys.exit()
 
