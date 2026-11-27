@@ -89,9 +89,18 @@ def runRoboUber(worldX,worldY,runTime,stop,junctions=None,streets=None,interpola
                taxi_profits = [taxi._account - 256 for taxi in taxis]
                joint_return = dispatcher0._revenue + sum(taxi_profits)
                active_taxis = sum(1 for taxi in taxis if taxi.onDuty)
+
+               counts_dict = getattr(dispatcher0, 'fareCounts', {})
+               f_counts = [counts_dict.get(taxi.number, 0) for taxi in taxis]
+               spread = max(f_counts) - min(f_counts)
+               sum_c = sum(f_counts)
+               sum_c_sq = sum(c * c for c in f_counts)
+               jains_j = (sum_c ** 2) / (len(f_counts) * sum_c_sq) if sum_c_sq > 0 else 1.0
+
                print(args.get('day', 1), svcArea.simTime,
                      taxi_profits[0], taxi_profits[1], taxi_profits[2], taxi_profits[3],
                      dispatcher0._revenue, joint_return, active_taxis, fare_drops,
+                     f_counts[0], f_counts[1], f_counts[2], f_counts[3], spread, round(jains_j, 4),
                      sep=',', file=args['metricsFile'], flush=True)
          time.sleep(0)        # change this value to speed up the simulation. Smaller times = faster runs
          print("curTime: {0}, world.time: {1}".format(threadTime,outputValues['time'][-1]))
@@ -106,10 +115,10 @@ else:
    fareFile = None
 
 if recordMetrics:
-   metricsFile = open('./metrics_1c.csv', 'w')
-   # COMMIT FAILED TEST 2
+   metricsFile = open('./metrics_2a.csv', 'w')
    print('Day', 'Tick', 'Taxi100', 'Taxi101', 'Taxi102', 'Taxi103',
          'DispatcherRev', 'JointReturn', 'ActiveTaxis', 'FareDrops',
+         'Fares100', 'Fares101', 'Fares102', 'Fares103', 'Spread', 'JainsJ',
          sep=',', file=metricsFile)
 else:
    metricsFile = None

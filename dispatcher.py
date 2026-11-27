@@ -222,39 +222,109 @@ class Dispatcher:
              return 150
           return (25+timeToDestination)/0.9
 
-      # TODO
-      # this method decides which taxi to allocate to a given fare. The algorithm here is not a fair allocation
-      # scheme: taxis can (and do!) get starved for fares, simply because they happen to be far away from the
-      # action. You should be able to do better than this. After balancing allocations, try to optimise which
-      # fares are allocated to which taxi (or indeed to any taxi at all!)
+      # TODO (DONE)
       def _allocateFare(self, origin, destination, time):
-           # a very simple approach here gives taxis at most 5 ticks to respond, which can
-           # surely be improved upon.
-          if self._parent.simTime-time > 5:
-             allocatedTaxi = -1
-             winnerNode = None
-             fareNode = self._parent.getNode(origin[0],origin[1])
-             # this does the allocation. There are a LOT of conditions to check, namely:
-             # 1) that the fare is asking for transport from a valid location;
-             # 2) that the bidding taxi is in the dispatcher's list of taxis
-             # 3) that the taxi's location is 'on-grid': somewhere in the dispatcher's map
-             # 4) that at least one valid taxi has actually bid on the fare
-             if fareNode is not None:
-                for taxiIdx in self._fareBoard[origin][destination][time].bidders:
-                    if len(self._taxis) > taxiIdx:
-                       bidderLoc = self._taxis[taxiIdx].currentLocation
-                       bidderNode = self._parent.getNode(bidderLoc[0],bidderLoc[1])
-                       if bidderNode is not None:
-                          # ultimately the naive algorithm chosen is which taxi is the closest. This is patently unfair for several
-                          # reasons, but does produce *a* winner.
-                          if winnerNode is None or self._parent.distance2Node(bidderNode,fareNode) < self._parent.distance2Node(winnerNode,fareNode):
-                             allocatedTaxi = taxiIdx
-                             winnerNode = bidderNode
-                          else:
-                             # and after all that, we still have to check that somebody won, because any of the other reasons to invalidate
-                             # the auction may have occurred.
-                             if allocatedTaxi >= 0:
-                                # but if so, allocate the taxi.
-                                self._fareBoard[origin][destination][time].taxi = allocatedTaxi     
-                                self._parent.allocateFare(origin,self._taxis[allocatedTaxi])
-     
+          fareNode = self._parent.getNode(origin[0], origin[1])
+          if fareNode is None:
+             return
+
+          fareEntry = self._fareBoard[origin][destination][time]
+
+          # get valid on-duty bidders
+          bidders = []
+          for idx in fareEntry.bidders:
+              if idx >= 0 and idx < len(self._taxis) and idx not in bidders:
+                 if self._taxis[idx].onDuty:
+                    bidders.append(idx)
+
+          if len(bidders) == 0:
+             return
+
+          # keep count of fares per taxi
+          if not hasattr(self, 'fareCounts'):
+             self.fareCounts = {}
+          for t in self._taxis:
+             if t.number not in self.fareCounts:
+                self.fareCounts[t.number] = 0
+
+          # check active and idle taxis
+          active = []
+          idle = 0
+          for t in self._taxis:
+              if t.onDuty:
+                 active.append(t)
+                 if t._passenger is None and len(t._path) == 0:
+                    idle += 1
+
+          waited = self._parent.simTime - time
+
+          # wait 1 tick if at least 2 idle taxis are free so closer ones can bid
+          if len(bidders) < len(active) and waited < 3:
+             if idle >= 2 and (waited < 1 or len(bidders) < 2):
+                return
+
+          totFares = 0
+          totCash = 0
+          for t in active:
+              totFares += self.fareCounts[t.number]
+              totCash += t._account
+
+          n = len(active) if len(active) > 0 else 1
+          avgFares = totFares / n
+          avgCash = totCash / n
+
+          destNode = self._parent.getNode(destination[0], destination[1])
+          if destNode is not None:
+             tripDist = self._parent.distance2Node(fareNode, destNode)
+          else:
+             tripDist = 0
+
+          allocatedTaxi = -1
+          bestScore = -100000
+
+          for idx in bidders:
+              t = self._taxis[idx]
+              bNode = self._parent.getNode(t.currentLocation[0], t.currentLocation[1])
+              if bNode is None:
+                 continue
+
+              dist = self._parent.distance2Node(bNode, fareNode)
+
+              # don't send a taxi that will run out of cash on the way
+              if t._account <= dist + 3:
+                 continue
+
+              rem = len(t._path)
+              if t._passenger is not None:
+                 busy = rem
+              else:
+                 busy = 0.25 * rem
+
+              profit = fareEntry.price - (dist + busy + tripDist)
+              fDiff = avgFares - self.fareCounts[t.number]
+              cDiff = avgCash - t._account
+
+              score = (-1.5 * dist) - (0.8 * busy) + (0.25 * profit) + (3.5 * fDiff) + (0.04 * cDiff)
+
+              if score > bestScore:
+                 bestScore = score
+                 allocatedTaxi = idx
+
+          # fallback to closest if everyone failed the cash check
+          if allocatedTaxi < 0:
+             minDist = 100000
+             for idx in bidders:
+                 loc = self._taxis[idx].currentLocation
+                 node = self._parent.getNode(loc[0], loc[1])
+                 if node is not None:
+                    d = self._parent.distance2Node(node, fareNode)
+                    if d < minDist:
+                       minDist = d
+                       allocatedTaxi = idx
+
+          if allocatedTaxi >= 0:
+             fareEntry.taxi = allocatedTaxi
+             self.fareCounts[self._taxis[allocatedTaxi].number] += 1
+             self._parent.allocateFare(origin, self._taxis[allocatedTaxi])
+
+

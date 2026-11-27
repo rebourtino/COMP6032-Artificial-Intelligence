@@ -13,7 +13,7 @@ runTime = 1440 # number of ticks in a 'day'
 numDays = 10    # number of days to run
 # you can change the DisplaySize to be bigger if you want larger-size objects on-screen
 displaySize = (1024,768)
-trafficOn = False
+trafficOn = True # turn this on to have traffic sources and sinks, which will affect the simulation
 recordFares = True # turn this on to append to faretypes.csv for more fare data
 recordMetrics = True # turn this on to append to metrics.csv for more metrics data
 
